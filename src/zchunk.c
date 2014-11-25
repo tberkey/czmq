@@ -1,4 +1,4 @@
-﻿/*  =========================================================================
+/*  =========================================================================
     zchunk - work with memory chunks
 
     Copyright (c) the Contributors as noted in the AUTHORS file.
@@ -321,9 +321,7 @@ zchunk_strhex (zchunk_t *self)
 
     size_t size = zchunk_size (self);
     byte *data = zchunk_data (self);
-    char *hex_str = (char *) zmalloc (size * 2 + 1);
-    if (!hex_str)
-        return NULL;
+    char *hex_str = (char *) malloc (size * 2 + 1);
 
     uint byte_nbr;
     for (byte_nbr = 0; byte_nbr < size; byte_nbr++) {
@@ -345,7 +343,11 @@ zchunk_strdup (zchunk_t *self)
     assert (self);
     assert (zchunk_is (self));
 
-    return strndup ((const char *) zchunk_data (self), zchunk_size (self));
+    size_t size = zchunk_size (self);
+    char *string = (char *) malloc (size + 1);
+    memcpy (string, zchunk_data (self), size);
+    string [size] = 0;
+    return string;
 }
 
 

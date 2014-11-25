@@ -220,8 +220,7 @@ CZMQ_EXPORT void
 DESCRIPTION
 -----------
 
-zhashx is an extended hash table container with more functionality than
-zhash, its simpler cousin.
+zhashx is an expandable hash table container.
 
 The hash table always has a size that is prime and roughly doubles its
 size when 75% full. In case of hash collisions items are chained in a
