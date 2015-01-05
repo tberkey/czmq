@@ -92,7 +92,7 @@ zsock_destroy_ (zsock_t **self_p, const char *filename, size_t line_nbr)
 
 //  --------------------------------------------------------------------------
 //  Smart constructors, which create sockets with additional set-up. In all of
-//  these, the endpoint is NULL, or starts with '@' (connect) or '>' (bind).
+//  these, the endpoint is NULL, or starts with '>' (connect) or '@' (bind).
 //  Multiple endpoints are allowed, separated by commas. If endpoint does not
 //  start with '@' or '>', default action depends on socket type.
 //  Create a PUB socket. Default action is bind.
@@ -560,11 +560,24 @@ zsock_type_str (zsock_t *self)
 int
 zsock_send (void *self, const char *picture, ...)
 {
+    va_list argptr;
+    va_start (argptr, picture);
+    int rc = zsock_vsend (self, picture, argptr);
+    va_end (argptr);
+    return rc;
+}
+
+
+//  Send a 'picture' message to the socket (or actor). This is a
+//  va_list version of zsock_send (), so please consult its documentation
+//  for the details.
+
+int
+zsock_vsend (void *self, const char *picture, va_list argptr)
+{
     assert (self);
     assert (picture);
 
-    va_list argptr;
-    va_start (argptr, picture);
     zmsg_t *msg = zmsg_new ();
     while (*picture) {
         if (*picture == 'i')
@@ -624,7 +637,6 @@ zsock_send (void *self, const char *picture, ...)
         }
         picture++;
     }
-    va_end (argptr);
     return zmsg_send (&msg, self);
 }
 
@@ -657,6 +669,21 @@ zsock_send (void *self, const char *picture, ...)
 int
 zsock_recv (void *self, const char *picture, ...)
 {
+    va_list argptr;
+    va_start (argptr, picture);
+    int rc = zsock_vrecv (self, picture, argptr);
+    va_end (argptr);
+    return rc;
+}
+
+
+//  Receive a 'picture' message from the socket (or actor). This is a
+//  va_list version of zsock_recv (), so please consult its documentation
+//  for the details.
+
+int
+zsock_vrecv (void *self, const char *picture, va_list argptr)
+{
     assert (self);
     assert (picture);
     zmsg_t *msg = zmsg_recv (self);
@@ -664,8 +691,6 @@ zsock_recv (void *self, const char *picture, ...)
         return -1;              //  Interrupted
 
     int rc = 0;
-    va_list argptr;
-    va_start (argptr, picture);
     while (*picture) {
         if (*picture == 'i') {
             char *string = zmsg_popstr (msg);
@@ -781,7 +806,6 @@ zsock_recv (void *self, const char *picture, ...)
         }
         picture++;
     }
-    va_end (argptr);
     zmsg_destroy (&msg);
     return rc;
 }
@@ -1236,12 +1260,8 @@ int
 zsock_signal (void *self, byte status)
 {
     assert (self);
-    int64_t signal_value = 0x7766554433221100L + status;
-    zmsg_t *msg = zmsg_new ();
-    int rc = zmsg_addmem (msg, &signal_value, 8);
-    if (rc == 0)
-        rc = zmsg_send (&msg, self);
-    return rc;
+    zmsg_t *msg = zmsg_new_signal (status);
+    return zmsg_send (&msg, self);
 }
 
 
@@ -1256,23 +1276,15 @@ zsock_wait (void *self)
 {
     assert (self);
 
-    //  A signal is a message containing one frame with our 8-byte magic
-    //  value. If we get anything else, we discard it and continue to look
-    //  for the signal message
+    //  Loop and discard messages until we get a signal value or interrupt.
     while (true) {
         zmsg_t *msg = zmsg_recv (self);
         if (!msg)
             return -1;
-        if (  zmsg_size (msg) == 1
-           && zmsg_content_size (msg) == 8) {
-            zframe_t *frame = zmsg_first (msg);
-            int64_t signal_value = *((int64_t *) zframe_data (frame));
-            if ((signal_value & 0xFFFFFFFFFFFFFF00L) == 0x7766554433221100L) {
-                zmsg_destroy (&msg);
-                return signal_value & 255;
-            }
-        }
+        int rc = zmsg_signal (msg);
         zmsg_destroy (&msg);
+        if (rc >= 0)
+            return rc;
     }
     return -1;
 }
@@ -1400,8 +1412,8 @@ zsock_test (bool verbose)
     assert (port >= 50000 && port <= DYNAMIC_LAST);
     port = zsock_bind (writer, "tcp://127.0.0.1:*[-50001]");
     assert (port >= DYNAMIC_FIRST && port <= 50001);
-    port = zsock_bind (writer, "tcp://127.0.0.1:*[60000-60010]");
-    assert (port >= 60000 && port <= 60010);
+    port = zsock_bind (writer, "tcp://127.0.0.1:*[60000-60050]");
+    assert (port >= 60000 && port <= 60050);
 
     port = zsock_bind (writer, "tcp://127.0.0.1:!");
     assert (port >= DYNAMIC_FIRST && port <= DYNAMIC_LAST);
@@ -1409,8 +1421,8 @@ zsock_test (bool verbose)
     assert (port >= 50000 && port <= DYNAMIC_LAST);
     port = zsock_bind (writer, "tcp://127.0.0.1:![-50001]");
     assert (port >= DYNAMIC_FIRST && port <= 50001);
-    port = zsock_bind (writer, "tcp://127.0.0.1:![60000-60010]");
-    assert (port >= 60000 && port <= 60010);
+    port = zsock_bind (writer, "tcp://127.0.0.1:![60000-60050]");
+    assert (port >= 60000 && port <= 60050);
 
     //  Test zsock_attach method
     zsock_t *server = zsock_new (ZMQ_DEALER);

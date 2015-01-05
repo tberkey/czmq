@@ -80,7 +80,7 @@ static void *s_logsender = NULL;    //  ZSYS_LOGSENDER=
 static size_t s_open_sockets = 0;
 
 //  We keep a list of open sockets to report leaks to developers
-static zlistx_t *s_sockref_list = NULL;
+static zlist_t *s_sockref_list = NULL;
 
 //  This defines a single zsocket_new() caller instance
 typedef struct {
@@ -163,12 +163,12 @@ zsys_init (void)
             s_logsystem = false;
     }
     //  Catch SIGINT and SIGTERM unless ZSYS_SIGHANDLER=false
-    if (  getenv ("ZSYS_SIGHANDLER") == NULL
-       || strneq (getenv ("ZSYS_SIGHANDLER"), "false"))
+    if (getenv ("ZSYS_SIGHANDLER") == NULL
+    ||  strneq (getenv ("ZSYS_SIGHANDLER"), "false"))
         zsys_catch_interrupts ();
 
     ZMUTEX_INIT (s_mutex);
-    s_sockref_list = zlistx_new ();
+    s_sockref_list = zlist_new ();
     if (!s_sockref_list) {
         zsys_shutdown ();
         return NULL;
@@ -225,7 +225,7 @@ zsys_shutdown (void)
     //  Print the source reference for any sockets the app did not
     //  destroy properly.
     ZMUTEX_LOCK (s_mutex);
-    s_sockref_t *sockref = (s_sockref_t *) zlistx_detach (s_sockref_list, NULL);
+    s_sockref_t *sockref = (s_sockref_t *) zlist_pop (s_sockref_list);
     while (sockref) {
         assert (sockref->filename);
         zsys_error ("dangling '%s' socket created at %s:%d",
@@ -233,9 +233,9 @@ zsys_shutdown (void)
                     sockref->filename, (int) sockref->line_nbr);
         zmq_close (sockref->handle);
         free (sockref);
-        sockref = (s_sockref_t *) zlistx_detach (s_sockref_list, NULL);
+        sockref = (s_sockref_t *) zlist_pop (s_sockref_list);
     }
-    zlistx_destroy (&s_sockref_list);
+    zlist_destroy (&s_sockref_list);
     ZMUTEX_UNLOCK (s_mutex);
 
     //  Close logsender socket if opened (don't do this in critical section)
@@ -303,7 +303,7 @@ zsys_socket (int type, const char *filename, size_t line_nbr)
             sockref->type = type;
             sockref->filename = filename;
             sockref->line_nbr = line_nbr;
-            zlistx_add_end (s_sockref_list, sockref);
+            zlist_append (s_sockref_list, sockref);
         }
         else {
             zmq_close (handle);
@@ -327,14 +327,14 @@ zsys_close (void *handle, const char *filename, size_t line_nbr)
     //  It's possible atexit() has already happened if we're running under
     //  a debugger that redirects the main thread exit.
     if (s_sockref_list) {
-        s_sockref_t *sockref = (s_sockref_t *) zlistx_first (s_sockref_list);
+        s_sockref_t *sockref = (s_sockref_t *) zlist_first (s_sockref_list);
         while (sockref) {
             if (sockref->handle == handle) {
-                zlistx_delete (s_sockref_list, zlistx_cursor (s_sockref_list));
+                zlist_remove (s_sockref_list, sockref);
                 free (sockref);
                 break;
             }
-            sockref = (s_sockref_t *) zlistx_next (s_sockref_list);
+            sockref = (s_sockref_t *) zlist_next (s_sockref_list);
         }
     }
     s_open_sockets--;
@@ -674,6 +674,22 @@ zsys_dir_delete (const char *pathname, ...)
 
 
 //  --------------------------------------------------------------------------
+//  Move to a specified working directory. Returns 0 if OK, -1 if this failed.
+
+int
+zsys_dir_change (const char *pathname)
+{
+    assert (pathname);
+#if (defined (__UNIX__))
+    return chdir (pathname);
+#elif (defined (__WINDOWS__))
+    return !SetCurrentDirectoryA (pathname);
+#endif
+    return -1;              //  Not implemented
+}
+
+
+//  --------------------------------------------------------------------------
 //  Set private file creation mode; all files created from here will be
 //  readable/writable by the owner only.
 
@@ -905,32 +921,32 @@ zsys_socket_error (const char *reason)
         default:              errno = GetLastError ();
     }
 #endif
-    if (  errno == EAGAIN
-       || errno == ENETDOWN
-       || errno == EHOSTUNREACH
-       || errno == ENETUNREACH
-       || errno == EINTR
-       || errno == EPIPE
-       || errno == ECONNRESET
+    if (errno == EAGAIN
+    ||  errno == ENETDOWN
+    ||  errno == EHOSTUNREACH
+    ||  errno == ENETUNREACH
+    ||  errno == EINTR
+    ||  errno == EPIPE
+    ||  errno == ECONNRESET
 #if defined (ENOPROTOOPT)
-       || errno == ENOPROTOOPT
+    ||  errno == ENOPROTOOPT
 #endif
 #if defined (EHOSTDOWN)
-       || errno == EHOSTDOWN
+    ||  errno == EHOSTDOWN
 #endif
 #if defined (EOPNOTSUPP)
-       || errno == EOPNOTSUPP
+    ||  errno == EOPNOTSUPP
 #endif
 #if defined (EWOULDBLOCK)
-       || errno == EWOULDBLOCK
+    ||  errno == EWOULDBLOCK
 #endif
 #if defined (EPROTO)
-       || errno == EPROTO
+    ||  errno == EPROTO
 #endif
 #if defined (ENONET)
-       || errno == ENONET
+    ||  errno == ENONET
 #endif
-          )
+    )
         return;             //  Ignore error and try again
     else {
         zsys_error ("(UDP) error '%s' on %s", strerror (errno), reason);
@@ -978,7 +994,7 @@ zsys_daemonize (const char *workdir)
 
     //  Move to a safe and known directory, which is supplied as an
     //  argument to this function (or not, if workdir is NULL or empty).
-    if (workdir && chdir (workdir)) {
+    if (workdir && zsys_dir_change (workdir)) {
         zsys_error ("cannot chdir to '%s'", workdir);
         return -1;
     }
@@ -1012,6 +1028,7 @@ zsys_daemonize (const char *workdir)
 //  may be null, indicating a no-op. Returns 0 on success, -1 on failure.
 //  Note if you combine this with zsys_daemonize, run after, not before
 //  that method, or the lockfile will hold the wrong process ID.
+
 int
 zsys_run_as (const char *lockfile, const char *group, const char *user)
 {
@@ -1051,7 +1068,6 @@ zsys_run_as (const char *lockfile, const char *group, const char *user)
             close (handle);
             return -1;
         }
-        close (handle);
     }
     if (group) {
         zsys_info ("running under group '%s'", group);
@@ -1594,6 +1610,7 @@ zsys_test (bool verbose)
     rc = zsys_dir_delete ("%s/%s", ".", ".testsys");
     assert (rc == 0);
     zsys_file_mode_default ();
+    assert (zsys_dir_change (".") == 0);
 
     int major, minor, patch;
     zsys_version (&major, &minor, &patch);

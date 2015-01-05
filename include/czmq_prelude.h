@@ -204,6 +204,11 @@
 #   define __UTYPE_GENERIC
 #endif
 
+//- Always include ZeroMQ headers -------------------------------------------
+
+#include "zmq.h"
+#include "zmq_utils.h"
+
 //- Standard ANSI include files ---------------------------------------------
 
 #include <ctype.h>
@@ -433,7 +438,9 @@ typedef struct sockaddr_in inaddr_t;    //  Internet socket address structure
     typedef long ssize_t;
 #       endif
 #   endif
-#   if (!defined (__MINGW32__) || (defined (__MINGW32__) && defined (__IS_64BIT__)))
+#   if (!defined (__MINGW32__) \
+    || (defined (__MINGW32__) && defined (__IS_64BIT__)) \
+    && !defined (ZMQ_DEFINED_STDINT))
 //    typedef __int8 int8_t;
     typedef __int16 int16_t;
     typedef __int32 int32_t;
@@ -563,10 +570,7 @@ typedef int SOCKET;
 #   endif
 #endif
 
-//- Always include ZeroMQ header file ---------------------------------------
-
-#include "zmq.h"
-#include "zmq_utils.h"
+//  ZMQ compatibility macros
 
 #if ZMQ_VERSION_MAJOR == 4
 #   define ZMQ_POLL_MSEC    1           //  zmq_poll is msec

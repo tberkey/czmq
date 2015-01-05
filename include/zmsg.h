@@ -170,6 +170,22 @@ CZMQ_EXPORT zmsg_t *
 CZMQ_EXPORT void
     zmsg_print (zmsg_t *self);
 
+//  Return true if the two messages have the same number of frames and each
+//  frame in the first message is identical to the corresponding frame in the
+//  other message. As with zframe_eq, return false if either message is NULL.
+CZMQ_EXPORT bool
+    zmsg_eq (zmsg_t *self, zmsg_t *other);
+
+//  Generate a signal message encoding the given status. A signal is a short
+//  message carrying a 1-byte success/failure code (by convention, 0 means
+//  OK). Signals are encoded to be distinguishable from "normal" messages.
+CZMQ_EXPORT zmsg_t *
+    zmsg_new_signal (byte status);
+
+//  Return signal value, 0 or greater, if message is a signal, -1 if not.
+CZMQ_EXPORT int
+    zmsg_signal (zmsg_t *self);
+    
 //  Probe the supplied object, and report if it looks like a zmsg_t.
 CZMQ_EXPORT bool
     zmsg_is (void *self);
