@@ -303,7 +303,7 @@ if (CZMQ_BUILD_TESTS)
   set_target_properties(czmq_selftest PROPERTIES
                         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bin"
                         COMPILE_OPTIONS "${czmq_static_compile_flags}")
-  target_compile_options(czmq-static PRIVATE "${STATIC_COMPILE_OPTIONS}")
+  target_compile_options(czmq_selftest PRIVATE "${STATIC_COMPILE_OPTIONS}")
   target_link_libraries(czmq_selftest czmq-static ZEROMQ_LIBRARIES_STATIC "${MORE_LIBRARIES}")
   add_test(czmq_selftest czmq_selftest)
 endif()
