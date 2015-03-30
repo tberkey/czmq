@@ -92,9 +92,9 @@ endif()
 ########################################################################
 # ZMQ dependency
 ########################################################################
-find_package(ZeroMQ REQUIRED)
-include_directories(${ZEROMQ_INCLUDE_DIRS})
-list(APPEND MORE_LIBRARIES ${ZEROMQ_LIBRARIES})
+#find_package(ZeroMQ REQUIRED)
+#include_directories(${ZEROMQ_INCLUDE_DIRS})
+#list(APPEND MORE_LIBRARIES ${ZEROMQ_LIBRARIES})
 
 ########################################################################
 # includes
