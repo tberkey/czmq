@@ -5,12 +5,13 @@ a directory tree (a directory plus all child directories) into a
 zdir structure and then let you navigate that structure. It exists
 mainly to wrap non-portable OS functions to do this.
 
+Please add @discuss section in ../src/zdir.c.
 
 This is the class interface:
 
     //  Create a new directory item that loads in the full tree of the specified
     //  path, optionally located under some parent path. If parent is "-", then
-    //  loads only the top-level directory (and does not use parent as a path).
+    //  loads only the top-level directory, and does not use parent as a path.
     CZMQ_EXPORT zdir_t *
         zdir_new (const char *path, const char *parent);
     

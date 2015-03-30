@@ -196,6 +196,11 @@ zstr_recvx (void *source, char **string_p, ...)
     if (!msg)
         return -1;
 
+    //  Filter a signal that may come from a dying actor
+    if (zmsg_signal (msg) >= 0) {
+        zmsg_destroy (&msg);
+        return -1;
+    }
     int count = 0;
     va_list args;
     va_start (args, string_p);

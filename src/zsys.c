@@ -279,39 +279,41 @@ zsys_socket (int type, const char *filename, size_t line_nbr)
     zsys_init ();
     ZMUTEX_LOCK (s_mutex);
     void *handle = zmq_socket (s_process_ctx, type);
-    //  Configure socket with process defaults
-    zsock_set_linger (handle, (int) s_linger);
+    if (handle) {
+        //  Configure socket with process defaults
+        zsock_set_linger (handle, (int) s_linger);
 #if (ZMQ_VERSION_MAJOR == 2)
-    //  For ZeroMQ/2.x we use sndhwm for both send and receive
-    zsock_set_hwm (handle, s_sndhwm);
+        //  For ZeroMQ/2.x we use sndhwm for both send and receive
+        zsock_set_hwm (handle, s_sndhwm);
 #else
-    //  For later versions we use separate SNDHWM and RCVHWM
-    zsock_set_sndhwm (handle, (int) s_sndhwm);
-    zsock_set_rcvhwm (handle, (int) s_rcvhwm);
+        //  For later versions we use separate SNDHWM and RCVHWM
+        zsock_set_sndhwm (handle, (int) s_sndhwm);
+        zsock_set_rcvhwm (handle, (int) s_rcvhwm);
 #   if defined (ZMQ_IPV6)
-    zsock_set_ipv6 (handle, s_ipv6);
+        zsock_set_ipv6 (handle, s_ipv6);
 #   else
-    zsock_set_ipv4only (handle, s_ipv6 ? 0 : 1);
+        zsock_set_ipv4only (handle, s_ipv6? 0: 1);
 #   endif
 #endif
-    //  Add socket to reference tracker so we can report leaks; this is
-    //  done only when the caller passes a filename/line_nbr
-    if (filename) {
-        s_sockref_t *sockref = (s_sockref_t *) zmalloc (sizeof (s_sockref_t));
-        if (sockref) {
-            sockref->handle = handle;
-            sockref->type = type;
-            sockref->filename = filename;
-            sockref->line_nbr = line_nbr;
-            zlist_append (s_sockref_list, sockref);
+        //  Add socket to reference tracker so we can report leaks; this is
+        //  done only when the caller passes a filename/line_nbr
+        if (filename) {
+            s_sockref_t *sockref = (s_sockref_t *) zmalloc (sizeof (s_sockref_t));
+            if (sockref) {
+                sockref->handle = handle;
+                sockref->type = type;
+                sockref->filename = filename;
+                sockref->line_nbr = line_nbr;
+                zlist_append (s_sockref_list, sockref);
+            }
+            else {
+                zmq_close (handle);
+                ZMUTEX_UNLOCK (s_mutex);
+                return NULL;
+            }
         }
-        else {
-            zmq_close (handle);
-            ZMUTEX_UNLOCK (s_mutex);
-            return NULL;
-        }
+        s_open_sockets++;
     }
-    s_open_sockets++;
     ZMUTEX_UNLOCK (s_mutex);
     return handle;
 }
@@ -391,7 +393,7 @@ zsys_create_pipe (zsock_t **backend_p)
     //  Now bind and connect pipe ends
     char endpoint [32];
     while (true) {
-        sprintf (endpoint, "inproc://pipe-%04x-%04x\n",
+        sprintf (endpoint, "inproc://pipe-%04x-%04x",
                  randof (0x10000), randof (0x10000));
         if (zsock_bind (frontend, "%s", endpoint) == 0)
             break;
@@ -499,7 +501,7 @@ bool
 zsys_file_exists (const char *filename)
 {
     assert (filename);
-    return zsys_file_mode (filename) != (mode_t) -1;
+    return zsys_file_mode (filename) != -1;
 }
 
 
@@ -537,8 +539,9 @@ zsys_file_modified (const char *filename)
 //  --------------------------------------------------------------------------
 //  Return file mode; provides at least support for the POSIX S_ISREG(m)
 //  and S_ISDIR(m) macros and the S_IRUSR and S_IWUSR bits, on all boxes.
+//  Returns a mode_t cast to int, or -1 in case of error.
 
-mode_t
+int
 zsys_file_mode (const char *filename)
 {
 #if (defined (__WINDOWS__))
@@ -576,7 +579,7 @@ zsys_file_delete (const char *filename)
 {
     assert (filename);
 #if (defined (__WINDOWS__))
-    return DeleteFileA (filename) ? 0 : -1;
+    return DeleteFileA (filename)? 0: -1;
 #else
     return unlink (filename);
 #endif
@@ -624,8 +627,8 @@ zsys_dir_create (const char *pathname, ...)
     while (true) {
         if (slash)
             *slash = 0;         //  Cut at slash
-        mode_t mode = zsys_file_mode (formatted);
-        if (mode == (mode_t) -1) {
+        int mode = zsys_file_mode (formatted);
+        if (mode == -1) {
             //  Does not exist, try to create it
 #if (defined (__WINDOWS__))
             if (!CreateDirectoryA (formatted, NULL)) {
@@ -664,7 +667,7 @@ zsys_dir_delete (const char *pathname, ...)
         return -1;
 
 #if (defined (__WINDOWS__))
-    int rc = RemoveDirectoryA (formatted) ? 0 : -1;
+    int rc = RemoveDirectoryA (formatted)? 0: -1;
 #else
     int rc = rmdir (formatted);
 #endif
@@ -863,8 +866,10 @@ zsys_udp_send (SOCKET udpsock, zframe_t *frame, inaddr_t *address)
     if (sendto (udpsock,
         (char *) zframe_data (frame), (int) zframe_size (frame),
         0, //  Flags
-        (struct sockaddr *) address, (int) sizeof (inaddr_t)) == -1)
+        (struct sockaddr *) address, (int) sizeof (inaddr_t)) == -1) {
+        zsys_debug ("zsys_udp_send: failed, reason=%s", strerror (errno));
         return -1;              //  UDP broadcast not possible
+    }
     else
         return 0;
 }
@@ -957,7 +962,8 @@ zsys_socket_error (const char *reason)
 
 //  --------------------------------------------------------------------------
 //  Return current host name, for use in public tcp:// endpoints. Caller gets
-//  a freshly allocated string, should free it using zstr_free().
+//  a freshly allocated string, should free it using zstr_free(). If the host
+//  name is not resolvable, returns NULL.
 
 char *
 zsys_hostname (void)
@@ -966,7 +972,11 @@ zsys_hostname (void)
     gethostname (hostname, NI_MAXHOST);
     hostname [NI_MAXHOST - 1] = 0;
     struct hostent *host = gethostbyname (hostname);
-    return strdup (host->h_name);
+
+    if (host && host->h_name)
+        return strdup (host->h_name);
+    else
+        return NULL;
 }
 
 
@@ -1176,7 +1186,7 @@ zsys_set_max_sockets (size_t max_sockets)
     if (s_open_sockets)
         zsys_error ("zsys_max_sockets() is not valid after creating sockets");
     assert (s_open_sockets == 0);
-    s_max_sockets = max_sockets ? max_sockets : zsys_socket_limit ();
+    s_max_sockets = max_sockets? max_sockets: zsys_socket_limit ();
     ZMUTEX_UNLOCK (s_mutex);
 }
 
@@ -1328,7 +1338,7 @@ zsys_set_interface (const char *value)
 const char *
 zsys_interface (void)
 {
-    return s_interface ? s_interface : "";
+    return s_interface? s_interface: "";
 }
 
 
@@ -1419,6 +1429,25 @@ static void
 s_log (char loglevel, char *string)
 {
 #if defined (__UNIX__)
+#   if defined (__UTYPE_ANDROID)
+    int priority = ANDROID_LOG_INFO;
+    if (loglevel == 'E')
+        priority = ANDROID_LOG_ERROR;
+    else
+    if (loglevel == 'W')
+        priority = ANDROID_LOG_WARN;
+    else
+    if (loglevel == 'N')
+        priority = ANDROID_LOG_INFO;
+    else
+    if (loglevel == 'I')
+        priority = ANDROID_LOG_INFO;
+    else
+    if (loglevel == 'D')
+        priority = ANDROID_LOG_DEBUG;
+    
+    __android_log_print(priority, "zsys", "%s", string);
+#   else
     if (s_logsystem) {
         int priority = LOG_INFO;
         if (loglevel == 'E')
@@ -1439,6 +1468,7 @@ s_log (char loglevel, char *string)
         syslog (priority, "%s", string);
     }
     else
+#   endif
 #endif
     //  Set s_logstream to stdout by default, unless we're using s_logsystem
     if (!s_logstream)
@@ -1594,7 +1624,7 @@ zsys_test (bool verbose)
     time_t when = zsys_file_modified (".");
     assert (when > 0);
 
-    mode_t mode = zsys_file_mode (".");
+    int mode = zsys_file_mode (".");
     assert (S_ISDIR (mode));
     assert (mode & S_IRUSR);
     assert (mode & S_IWUSR);
