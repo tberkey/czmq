@@ -69,10 +69,6 @@ if (MINGW)
     set(MORE_LIBRARIES -lws2_32 -lrpcrt4 -liphlpapi)
 endif()
 
-if(WIN32)
-  add_definitions(-DLIBCZMQ_STATIC)
-endif()
-
 # required libraries for cygwin
 if (CYGWIN)
     set(MORE_LIBRARIES -luuid)
@@ -143,6 +139,18 @@ source_group ("Header Files" FILES ${czmq_headers})
 install(FILES ${czmq_headers} DESTINATION include)
 
 ########################################################################
+# import ZeroMQ libraries
+########################################################################
+# add the libraries to global scope and per configuration location to be linked
+add_library(ZEROMQ_LIBRARIES STATIC IMPORTED)
+set_property(TARGET ZEROMQ_LIBRARIES PROPERTY IMPORTED_LOCATION_DEBUG          "${ZEROMQ_LIB_DEBUG}")
+set_property(TARGET ZEROMQ_LIBRARIES PROPERTY IMPORTED_LOCATION_RELEASE        "${ZEROMQ_LIB_RELEASE}")
+set_property(TARGET ZEROMQ_LIBRARIES PROPERTY IMPORTED_LOCATION_RELWITHDEBINFO "${ZEROMQ_LIB_RELWITHDEBINFO}")   
+
+message(STATUS "Fuck ${ZEROMQ_LIB_DEBUG}")
+message(STATUS "Fuck Me ${CMAKE_CXX_FLAGS}")
+
+########################################################################
 # library
 ########################################################################
 include_directories("${BINARY_DIR}" "${SOURCE_DIR}/include")
@@ -190,21 +198,22 @@ set (czmq_sources
     src/zthread.c
 )
 source_group ("Source Files" FILES ${czmq_sources})
-if (NOT DEFINED BUILD_SHARED_LIBS)
-    SET(BUILD_SHARED_LIBS ON)
-endif()
-add_library(czmq ${czmq_sources})
-set_target_properties(czmq PROPERTIES DEFINE_SYMBOL "LIBCZMQ_EXPORTS")
-target_link_libraries(czmq ${ZEROMQ_LIBRARIES} ${MORE_LIBRARIES})
-set_target_properties(czmq PROPERTIES
+
+#add_library(czmq SHARED ${czmq_sources})
+add_library(czmq-static STATIC ${czmq_sources})
+set_target_properties(czmq-static PROPERTIES
+                      PUBLIC_HEADER "${czmq_headers}"
+                      RELEASE_POSTFIX "${_czmq_COMPILER}-mt-${CZMQ_MAJOR_VERSION}_${CZMQ_MINOR_VERSION}_${CZMQ_PATCH_VERSION}"
+                      RELWITHDEBINFO_POSTFIX "${_czmq_COMPILER}-mt-${CZMQ_MAJOR_VERSION}_${CZMQ_MINOR_VERSION}_${CZMQ_PATCH_VERSION}"
+                      DEBUG_POSTFIX "${_czmq_COMPILER}-mt-gd-${CZMQ_MAJOR_VERSION}_${CZMQ_MINOR_VERSION}_${CZMQ_PATCH_VERSION}"
+                      ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/lib"
     COMPILE_FLAGS "/D LIBCZMQ_STATIC"
     OUTPUT_NAME "czmq")
+target_link_libraries(czmq-static)
 
-#install(TARGETS czmq
-#    LIBRARY DESTINATION "lib${LIB_SUFFIX}" # .so file
-#    ARCHIVE DESTINATION "lib${LIB_SUFFIX}" # .lib file
-#    RUNTIME DESTINATION bin              # .dll file
-#)
+install(TARGETS czmq-static EXPORT CMZQ-TARGETS
+        ARCHIVE DESTINATION lib
+        PUBLIC_HEADER DESTINATION include)
 
 ########################################################################
 # pkgconfig
@@ -228,7 +237,10 @@ install(
 # tests
 ########################################################################
 add_executable(czmq_selftest "${SOURCE_DIR}/src/czmq_selftest.c")
-  target_link_libraries(czmq_selftest czmq ${ZEROMQ_LIBRARIES})
+  set_target_properties(czmq_selftest PROPERTIES
+                        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bin"
+                        COMPILE_FLAGS "/D LIBCZMQ_STATIC")
+  target_link_libraries(czmq_selftest czmq-static ZEROMQ_LIBRARIES "${MORE_LIBRARIES}")
   add_test(czmq_selftest czmq_selftest)
 
 ########################################################################
