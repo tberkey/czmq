@@ -50,16 +50,16 @@ module CZMQ
       end
       
       # Create a new callback of the following type:
-      # Comparison function for zlist_sort method
-      #     typedef bool (zlist_compare_fn) (
-      #         void *item1, void *item2);   
+      # Comparison function e.g. for sorting and removing.
+      #     typedef int (zlist_compare_fn) (
+      #         void *item1, void *item2);  
       #
       # WARNING: If your Ruby code doesn't retain a reference to the
       #   FFI::Function object after passing it to a C function call,
       #   it may be garbage collected while C still holds the pointer,
       #   potentially resulting in a segmentation fault.
       def self.compare_fn
-        ::FFI::Function.new :bool, [:pointer, :pointer], blocking: true do |item1, item2|
+        ::FFI::Function.new :int, [:pointer, :pointer], blocking: true do |item1, item2|
           yield item1, item2
         end
       end
@@ -165,6 +165,15 @@ module CZMQ
         result
       end
       
+      # Checks if an item already is present. Uses compare method to determine if  
+      # items are equal. If the compare method is NULL the check will only compare 
+      # pointers. Returns true if item is present else false.                      
+      def exists item
+        raise DestroyedError unless @ptr
+        result = ::CZMQ::FFI.zlist_exists @ptr, item
+        result
+      end
+      
       # Remove the specified item from the list if present
       def remove item
         raise DestroyedError unless @ptr
@@ -215,6 +224,17 @@ module CZMQ
       def autofree
         raise DestroyedError unless @ptr
         result = ::CZMQ::FFI.zlist_autofree @ptr
+        result
+      end
+      
+      # Sets a compare function for this list. The function compares two items. 
+      # It returns an integer less than, equal to, or greater than zero if the  
+      # first item is found, respectively, to be less than, to match, or be     
+      # greater than the second item.                                           
+      # This function is used for sorting, removal and exists checking.         
+      def comparefn fn
+        raise DestroyedError unless @ptr
+        result = ::CZMQ::FFI.zlist_comparefn @ptr, fn
         result
       end
       

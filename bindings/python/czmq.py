@@ -1876,6 +1876,7 @@ of these characters, each corresponding to one or two arguments:
     2 = uint16_t
     4 = uint32_t
     8 = uint64_t
+    s = char *
     b = byte *, size_t (2 arguments)
     c = zchunk_t *
     f = zframe_t *
@@ -2238,7 +2239,7 @@ Callback function for zhash_foreach method"""
 
 
 # zlist
-zlist_compare_fn = CFUNCTYPE(c_bool, c_void_p, c_void_p)
+zlist_compare_fn = CFUNCTYPE(c_int, c_void_p, c_void_p)
 zlist_free_fn = CFUNCTYPE(None, c_void_p)
 lib.zlist_new.restype = zlist_p
 lib.zlist_new.argtypes = []
@@ -2262,6 +2263,8 @@ lib.zlist_push.restype = c_int
 lib.zlist_push.argtypes = [zlist_p, c_void_p]
 lib.zlist_pop.restype = c_void_p
 lib.zlist_pop.argtypes = [zlist_p]
+lib.zlist_exists.restype = c_bool
+lib.zlist_exists.argtypes = [zlist_p, c_void_p]
 lib.zlist_remove.restype = None
 lib.zlist_remove.argtypes = [zlist_p, c_void_p]
 lib.zlist_dup.restype = zlist_p
@@ -2274,6 +2277,8 @@ lib.zlist_sort.restype = None
 lib.zlist_sort.argtypes = [zlist_p, zlist_compare_fn]
 lib.zlist_autofree.restype = None
 lib.zlist_autofree.argtypes = [zlist_p]
+lib.zlist_comparefn.restype = None
+lib.zlist_comparefn.argtypes = [zlist_p, zlist_compare_fn]
 lib.zlist_freefn.restype = c_void_p
 lib.zlist_freefn.argtypes = [zlist_p, c_void_p, zlist_free_fn, c_bool]
 lib.zlist_test.restype = None
@@ -2352,6 +2357,12 @@ been set, this method will also duplicate the item."""
         """Pop the item off the start of the list, if any"""
         return c_void_p(lib.zlist_pop(self._as_parameter_))
 
+    def exists(self, item):
+        """Checks if an item already is present. Uses compare method to determine if 
+items are equal. If the compare method is NULL the check will only compare 
+pointers. Returns true if item is present else false."""
+        return lib.zlist_exists(self._as_parameter_, item)
+
     def remove(self, item):
         """Remove the specified item from the list if present"""
         return lib.zlist_remove(self._as_parameter_, item)
@@ -2385,6 +2396,14 @@ list values, you must free them explicitly before destroying the list.
 The usual technique is to pop list items and destroy them, until the
 list is empty."""
         return lib.zlist_autofree(self._as_parameter_)
+
+    def comparefn(self, fn):
+        """Sets a compare function for this list. The function compares two items. 
+It returns an integer less than, equal to, or greater than zero if the
+first item is found, respectively, to be less than, to match, or be 
+greater than the second item. 
+This function is used for sorting, removal and exists checking."""
+        return lib.zlist_comparefn(self._as_parameter_, fn)
 
     def freefn(self, item, fn, at_tail):
         """Set a free function for the specified list item. When the item is
