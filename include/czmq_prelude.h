@@ -247,6 +247,10 @@
 #   include <sys/stat.h>
 #   include <sys/utime.h>
 #   include <share.h>
+#   if (_MSC_VER >= 1800)
+#       include <inttypes.h>
+#   endif
+#
 #endif
 
 #if (defined (__UNIX__))
