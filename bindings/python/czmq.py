@@ -1388,6 +1388,8 @@ lib.zmsg_recv.restype = zmsg_p
 lib.zmsg_recv.argtypes = [c_void_p]
 lib.zmsg_send.restype = c_int
 lib.zmsg_send.argtypes = [POINTER(zmsg_p), c_void_p]
+lib.zmsg_sendm.restype = c_int
+lib.zmsg_sendm.argtypes = [POINTER(zmsg_p), c_void_p]
 lib.zmsg_size.restype = c_size_t
 lib.zmsg_size.argtypes = [zmsg_p]
 lib.zmsg_content_size.restype = c_size_t
@@ -1491,6 +1493,16 @@ it successfully. If the message has no frames, sends nothing but destroys
 the message anyhow. Nullifies the caller's reference to the message (as
 it is a destructor)."""
         return lib.zmsg_send(byref(zmsg_p.from_param(self_p)), dest)
+
+    @staticmethod
+    def sendm(self_p, dest):
+        """Send message to destination socket as part of a multipart sequence, and
+destroy the message after sending it successfully. Note that after a
+zmsg_sendm, you must call zmsg_send or another method that sends a final
+message part. If the message has no frames, sends nothing but destroys
+the message anyhow. Nullifies the caller's reference to the message (as
+it is a destructor)."""
+        return lib.zmsg_sendm(byref(zmsg_p.from_param(self_p)), dest)
 
     def size(self):
         """Return size of message, i.e. number of frames (0 or more)."""
@@ -1862,7 +1874,7 @@ isn't supported."""
     def attach(self, endpoints, serverish):
         """Attach a socket to zero or more endpoints. If endpoints is not null,
 parses as list of ZeroMQ endpoints, separated by commas, and prefixed by
-'@' (to bind the socket) or '>' (to attach the socket). Returns 0 if all
+'@' (to bind the socket) or '>' (to connect the socket). Returns 0 if all
 endpoints were valid, or -1 if there was a syntax error. If the endpoint
 does not start with '@' or '>', the serverish argument defines whether
 it is used to bind (serverish = true) or connect (serverish = false)."""
