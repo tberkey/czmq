@@ -738,7 +738,7 @@ s_server_config_service (s_server_t *self)
             if (zsock_bind (self->router, "%s", endpoint) == -1)
                 zsys_warning ("could not bind to %s (%s)", endpoint, zmq_strerror (zmq_errno ()));
         }
-#if (ZMQ_MAJOR_VERSION >= 4)
+#if (ZMQ_VERSION_MAJOR >= 4)
         else
         if (streq (zconfig_name (section), "security")) {
             char *mechanism = zconfig_resolve (section, "mechanism", "null");
@@ -821,7 +821,7 @@ s_server_handle_pipe (zloop_t *loop, zsock_t *reader, void *argument)
         zconfig_put (self->config, path, value);
         if (streq (path, "server/animate")) {
             zsys_warning ("'%s' is deprecated, use VERBOSE command instead", path);
-            self->verbose = atoi (value) != 0;
+            self->verbose = atoi (value);
         }
         s_server_config_global (self);
         free (path);

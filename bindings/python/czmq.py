@@ -656,6 +656,8 @@ lib.zframe_destroy.restype = None
 lib.zframe_destroy.argtypes = [POINTER(zframe_p)]
 lib.zframe_new_empty.restype = zframe_p
 lib.zframe_new_empty.argtypes = []
+lib.zframe_from.restype = zframe_p
+lib.zframe_from.argtypes = [c_char_p]
 lib.zframe_recv.restype = zframe_p
 lib.zframe_recv.argtypes = [c_void_p]
 lib.zframe_send.restype = c_int
@@ -727,6 +729,11 @@ size octets from the specified data into the frame body."""
         return Zframe(lib.zframe_new_empty(), True)
 
     @staticmethod
+    def from(string):
+        """Create a frame with a specified string content."""
+        return Zframe(lib.zframe_from(string), True)
+
+    @staticmethod
     def recv(source):
         """Receive frame from socket, returns zframe_t object or NULL if the recv
 was interrupted. Does a blocking recv, if you want to not block then use
@@ -772,7 +779,7 @@ or by the zframe_set_more() method"""
         return lib.zframe_more(self._as_parameter_)
 
     def set_more(self, more):
-        """Set frame MORE indicator (1 or 0). Note this is NOT used when sending 
+        """Set frame MORE indicator (1 or 0). Note this is NOT used when sending
 frame to socket, you have to specify flag explicitly."""
         return lib.zframe_set_more(self._as_parameter_, more)
 
@@ -1881,6 +1888,7 @@ of these characters, each corresponding to one or two arguments:
     c = zchunk_t *
     f = zframe_t *
     h = zhashx_t *
+    U = zuuid_t *
     p = void * (sends the pointer value, only meaningful over inproc)
     m = zmsg_t * (sends all frames in the zmsg)
     z = sends zero-sized frame (0 arguments)
@@ -1911,8 +1919,9 @@ a series of pointers as provided by the caller:
     b = byte **, size_t * (2 arguments) (allocates memory)
     c = zchunk_t ** (creates zchunk)
     f = zframe_t ** (creates zframe)
-    p = void ** (stores pointer)
+    U = zuuid_t * (creates a zuuid with the data)
     h = zhashx_t ** (creates zhashx)
+    p = void ** (stores pointer)
     m = zmsg_t ** (creates a zmsg with the remaing frames)
     z = null, asserts empty frame (0 arguments)
     u = uint * (stores unsigned integer, deprecated)
@@ -1949,6 +1958,7 @@ type of each argument. Supports these argument types:
     S       char *, 0-2^32-1 chars  type = "longstr"
     c       zchunk_t *              type = "chunk"
     f       zframe_t *              type = "frame"
+    u       zuuid_t *               type = "uuid"
     m       zmsg_t *                type = "msg"
     p       void *, sends pointer value, only over inproc
 
@@ -2343,7 +2353,7 @@ Leaves cursor pointing at the current item, or NULL if the list is empty."""
 
     def append(self, item):
         """Append an item to the end of the list, return 0 if OK or -1 if this
-failed for some reason (out of memory). Note that if a duplicator has 
+failed for some reason (out of memory). Note that if a duplicator has
 been set, this method will also duplicate the item."""
         return lib.zlist_append(self._as_parameter_, item)
 
@@ -2358,8 +2368,8 @@ been set, this method will also duplicate the item."""
         return c_void_p(lib.zlist_pop(self._as_parameter_))
 
     def exists(self, item):
-        """Checks if an item already is present. Uses compare method to determine if 
-items are equal. If the compare method is NULL the check will only compare 
+        """Checks if an item already is present. Uses compare method to determine if
+items are equal. If the compare method is NULL the check will only compare
 pointers. Returns true if item is present else false."""
         return lib.zlist_exists(self._as_parameter_, item)
 
@@ -2370,7 +2380,8 @@ pointers. Returns true if item is present else false."""
     def dup(self):
         """Make a copy of list. If the list has autofree set, the copied list will
 duplicate all items, which must be strings. Otherwise, the list will hold
-pointers back to the items in the original list."""
+pointers back to the items in the original list. If list is null, returns
+NULL."""
         return Zlist(lib.zlist_dup(self._as_parameter_), True)
 
     def purge(self):
@@ -2398,10 +2409,10 @@ list is empty."""
         return lib.zlist_autofree(self._as_parameter_)
 
     def comparefn(self, fn):
-        """Sets a compare function for this list. The function compares two items. 
+        """Sets a compare function for this list. The function compares two items.
 It returns an integer less than, equal to, or greater than zero if the
-first item is found, respectively, to be less than, to match, or be 
-greater than the second item. 
+first item is found, respectively, to be less than, to match, or be
+greater than the second item.
 This function is used for sorting, removal and exists checking."""
         return lib.zlist_comparefn(self._as_parameter_, fn)
 
